@@ -1,0 +1,4 @@
+# Python assets
+**/__pycache__
+**/*.pyc
+**/*.egg-info

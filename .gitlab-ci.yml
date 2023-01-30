@@ -1,0 +1,22 @@
+# vim: set ft=gitlab-ci ts=2
+
+
+stages:
+  - build
+
+
+build_plugin:
+  stage: build
+  image: python:3.10-slim
+  only:
+    - main
+  script:
+    - PACKAGE_VERSION=$(python setup.py --version)
+    - python3 -m pip install twine
+    - python3 setup.py sdist
+    - >
+      TWINE_PASSWORD=${CI_JOB_TOKEN}
+      TWINE_USERNAME=gitlab-ci-token
+      python3 -m twine upload
+      --repository-url ${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/pypi
+      dist/

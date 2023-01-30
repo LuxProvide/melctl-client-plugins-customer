@@ -1,0 +1,6 @@
+melctl_client >= 5.2.0, < 6.0.0
+aiofiles >= 22.1
+aiobotocore >= 2.4
+
+# Library stubs
+types-aiofiles >= 22.1
