@@ -39,13 +39,51 @@ __version__    = '1.0.0'
 
 
 from setuptools import setup, find_namespace_packages
+from textwrap import dedent
 
 
 setup(
     name='melctl_client_plugins_customer',
-    author='@jpclipffel',
-    url='https://gitlab.lxp.lu/lxp-hpc/iac/meluxina/melctl-client-plugins/customer',
+    author='jpclipffel',
+    url='https://github.com/LuxProvide/melctl-client-plugins-customer',
     version=__version__,
+    description='Customers plugins for LuxProvide API command-line client',
+    long_description=dedent('''\
+        This package provides MelCtl plugins for LuxProvide customers.
+
+        - Documentation_
+        - Repository_
+
+        About MelCtl
+        ============
+
+        MelCtl provides a set of APIs to interact with LuxProvide_'s HPC (High
+        Performance Computer) and Cloud services.
+
+        The MelCtl command-line client allows our customers and internal users
+        to interact with MelCtl APIs.
+
+        The base package (`MelCtl client`_) provides basic plugins
+        (e.g. authentication). Supplementary packages such as
+        `melctl_client_plugins_customer` provides extra plugins to interact with
+        more services from the command line.
+
+        About LuxProvide_
+        =================
+
+        LuxProvide is Luxembourg’s one-stop-shop High Performance Computing
+        Centre, with missions to provide high performance computing
+        capabilities, high-speed connectivity and advanced applications on a
+        national, European and international scale, serving the public and
+        private sectors.
+
+
+        .. _Documentation: https://luxprovide.github.io/melctl-client/
+        .. _Repository: https://github.com/LuxProvide/melctl-client-plugins-customer/
+        .. _LuxProvide: https://luxprovide.lu/
+        .. _MelCtl client: https://pypi.org/project/melctl-client/
+    '''),
+    long_description_content_type='text/x-rst',
     packages=find_namespace_packages(include=['melctl_client_plugins.*']),
     install_requires=[
         'melctl_client >= 5.2.0, < 6.0.0',
