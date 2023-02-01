@@ -5,7 +5,7 @@ stages:
   - build
 
 
-build_plugin:
+build:
   stage: build
   image: python:3.10-slim
   only:
@@ -19,4 +19,5 @@ build_plugin:
       TWINE_USERNAME=gitlab-ci-token
       python3 -m twine upload
       --repository-url ${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/pypi
+      --skip-existing
       dist/*
