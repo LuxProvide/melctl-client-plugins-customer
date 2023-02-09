@@ -284,6 +284,38 @@ class S3:
         # Done
         return results
 
+    async def reindex_bucket(self, bucket: str, write: bool, update: bool, delete: bool):
+        """Sync a bucket with its underlying file system path.
+
+        :param bucket: Bucket name
+        :param write: If `True`, add new found files to bucket
+        :param update: If `True`, update changed files metadata in bucket
+        :param delete: If `True`, remove deleted files from bucket
+        """
+
+        def set_request(request, **kwargs):
+            # request.params['sync'] = ''
+            request.url = f'{request.url}?sync'
+            ops = list(filter(None, [
+                write and 'WRITE' or None,
+                update and 'UPDATE' or None,
+                delete and 'DELETE' or None
+            ]))
+            if len(ops) > 0:
+                request.headers.add_header('x-ddn-bucket-sync-ops', ','.join(ops))
+            return
+            # ---
+            print(request.params)
+            print(request.headers)
+            raise Exception('!')
+
+        async with self.session.create_client(**self.client_kwargs) as client:
+            client.meta.events.register('before-sign.*', set_request)
+            return await client.put_object(
+                Bucket=bucket,
+                Key='bucketsync_payload_empty'
+            )
+
 
 class Login(Command):
     """Login to S3 and store credentials.
@@ -548,6 +580,33 @@ class DeleteObjects(Command):
         return asyncio.run(self.s3.delete_objects(
             *S3.parse_path(args.path),
             args.recursive
+        ))
+
+
+class Reindex(Command):
+    """Reindex a bucket.
+    """
+
+    def __init__(self, subparser):
+        super().__init__(subparser, 'reindex')
+        self.parser.add_argument('name', type=str, help='Bucket name')
+        for op, help in (
+            ('write',      'new files indexation in bucket'),
+            ('update', 'changed files re-indexation in bucket'),
+            ('delete', 'deleted files de-indexation from bucket')
+            ):
+            self.parser.add_argument(f'--{op}', dest=op, action='store_true',
+                default=True, help=f'Enable {help}')
+            self.parser.add_argument(f'--no-{op}', dest=op, action='store_false',
+                default=True, help=f'Disable {help}')
+        self.s3 = S3()
+
+    def target(self, args):
+        return asyncio.run(self.s3.reindex_bucket(
+            S3.parse_path(args.name)[0],
+            args.write,
+            args.update,
+            args.delete
         ))
 
 

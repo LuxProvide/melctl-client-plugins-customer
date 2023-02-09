@@ -51,6 +51,7 @@ commands = {
         s3.DeleteBucket,
         s3.DeleteObjects,
         s3.Copy,
+        s3.Reindex,
         s3.GenConf
     ]
 }
