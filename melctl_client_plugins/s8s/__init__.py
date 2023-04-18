@@ -50,6 +50,7 @@ commands = {
         s8s.PoolsList,
         s8s.PoolsGet,
         s8s.Status,
+        s8s.Resources,
         s8s.Scale
     ]
 }

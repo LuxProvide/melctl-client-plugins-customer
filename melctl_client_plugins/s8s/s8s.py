@@ -206,6 +206,43 @@ class Status(_Pools):
             raise
 
 
+class Resources(Command):
+    """Shows available resources.
+    """
+    def __init__(self, subparser):
+        super().__init__(subparser, 'resources',
+            headers=['region', 'nodes_by_features'])
+        self.parser.add_argument('name', type=str, default=None,
+            nargs='?', help='Configuration name')
+        self.parser.add_argument('--region', type=str, default=None,
+            required=False, help='Region name')
+        self.parser.add_argument('--nodeslist', action='store_true',
+            default=False, help='Include nodes list')
+
+    def reprocess_args(self, args):
+        if args.name is not None:
+            with open(cfgfile, 'r') as fd:
+                config = json.load(fd)[args.name]
+                args.region = config['region']
+        return args
+
+    def target(self, args):
+        # Patch args from config
+        args = self.reprocess_args(args)
+        # Patch headers
+        if args.nodeslist:
+            self.headers.append('nodes_list')
+        # Proceed
+        req = self.session.get(
+            f'{self.url}/s8s/regions/{args.region}/resources',
+            params={
+                'nodeslist': args.nodeslist
+            }
+        )
+        req.raise_for_status()
+        return req.json()
+
+
 class Scale(Command):
     """Scales an S8S clusters.
     """
@@ -242,6 +279,8 @@ class Scale(Command):
             help='Master node URL')
         self.parser.add_argument('--token', type=str, default=None,
             help='Cluster join token')
+        self.parser.add_argument('--dry-run', action='store_true', default=False,
+            help='Dry run mode')
         for p in self.partitions:
             self.parser.add_argument(f'--{p}', dest=f'specs_{p}',
                 type=Scale.type_scalespecs, default=[], action='append',
@@ -318,7 +357,10 @@ class Scale(Command):
             print(node_specs)
             req = self.session.post(
                 f'{self.url}/s8s/regions/{args.region}/pools/{args.pool}',
-                json=node_specs
+                json=node_specs,
+                params={
+                    'dry_run': args.dry_run
+                }
             )
             req.raise_for_status()
             scale_stats.append(req.json())
