@@ -284,37 +284,53 @@ class S3:
         # Done
         return results
 
-    async def reindex_bucket(self, bucket: str, write: bool, update: bool, delete: bool):
+    async def reindex_bucket(self, bucket: str, write: bool, update: bool, delete: bool, mode: str = 'headers'):
         """Sync a bucket with its underlying file system path.
 
         :param bucket: Bucket name
         :param write: If `True`, add new found files to bucket
         :param update: If `True`, update changed files metadata in bucket
         :param delete: If `True`, remove deleted files from bucket
+        :param mode: Operation mode, either `query`, `headers` or `payload`
         """
 
-        def set_request(request, **kwargs):
-            # request.params['sync'] = ''
-            request.url = f'{request.url}?sync'
-            ops = list(filter(None, [
+        def get_ops():
+            return list(filter(None, [
                 write and 'WRITE' or None,
                 update and 'UPDATE' or None,
                 delete and 'DELETE' or None
             ]))
-            if len(ops) > 0:
-                request.headers.add_header('x-ddn-bucket-sync-ops', ','.join(ops))
-            return
-            # ---
-            print(request.params)
-            print(request.headers)
-            raise Exception('!')
+
+        def set_request(request, **kwargs):
+            # All modes - Patch URL
+            request.url = f"{'/'.join(request.url.split('/')[0:-1])}?sync"
+            # Headers mode - Add headers
+            if mode == 'headers':
+                ops = get_ops()
+                if len(ops) > 0:
+                    request.headers.add_header('x-ddn-bucket-sync-ops', ','.join(ops))
 
         async with self.session.create_client(**self.client_kwargs) as client:
+            # All modes - Patch URL
             client.meta.events.register('before-sign.*', set_request)
-            return await client.put_object(
-                Bucket=bucket,
-                Key='bucketsync_payload_empty'
-            )
+            # Headers and Query modes - No payload
+            if mode in ('query', 'headers'):
+                response = await client.put_object(
+                    Bucket=bucket,
+                    Key='bucketsync_payload_empty'
+                )
+            # Payload mode - Add payload
+            elif mode == 'payload':
+                response = await client.put_object(
+                    Bucket=bucket,
+                    Key='bucketsync_payload',
+                    Body=f'<operation><operationTypes>{",".join(get_ops())}</operationTypes></operation>'
+                )
+            else:
+                raise Exception(f'Invalid mode: got {mode}, excepts one of query,headers,payload')
+            # Get response
+            print(response, type(response))
+            return response
 
 
 class Login(Command):
@@ -588,8 +604,11 @@ class Reindex(Command):
     """
 
     def __init__(self, subparser):
-        super().__init__(subparser, 'reindex')
+        super().__init__(subparser, 'reindex', headers=('bucket', 'HTTPStatusCode'))
         self.parser.add_argument('name', type=str, help='Bucket name')
+        self.parser.add_argument('-m', '--mode', type=str,
+            choices=('query', 'headers', 'payload'),
+            default='headers')
         for op, help in (
             ('write',      'new files indexation in bucket'),
             ('update', 'changed files re-indexation in bucket'),
@@ -602,12 +621,22 @@ class Reindex(Command):
         self.s3 = S3()
 
     def target(self, args):
-        return asyncio.run(self.s3.reindex_bucket(
-            S3.parse_path(args.name)[0],
+        bucket = S3.parse_path(args.name)[0]
+        data = asyncio.run(self.s3.reindex_bucket(
+            bucket,
             args.write,
             args.update,
-            args.delete
+            args.delete,
+            args.mode
         ))
+        print(type(data))
+        # Extra attributes
+        data.update({
+            'bucket': bucket,
+            'HTTPStatusCode': data.get('ResponseMetadata', {}).get('HTTPStatusCode'),
+        })
+        # Done
+        return data
 
 
 class GenConf(Command):
