@@ -35,7 +35,7 @@ __copyright__  = 'Copyright (c) 2023 LuxProvide S.A.'
 __maintainer__ = 'Jean-Philippe Clipffel'
 
 
-__version__    = '1.1.0'
+__version__    = '1.2.0'
 
 
 from setuptools import setup, find_namespace_packages
