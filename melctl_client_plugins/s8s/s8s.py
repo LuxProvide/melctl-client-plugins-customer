@@ -47,6 +47,89 @@ from melctl_client.config import settings
 cfgfile = Path(settings.Config.secrets_dir, 's8s_config.json')
 
 
+
+
+class _S8SCommand:
+    """Base S8S command.
+    """
+
+    all_keys: list[str]      = ['region', 'pool', 'master', 'token']
+    required_keys: list[str] = ['region', 'pool', 'master', 'token']
+
+    def __init__(self, *args, **kwargs):
+        self.parser.add_argument('config', type=str, default=None,
+            nargs='?', help='Configuration name')
+        # ---
+        if 'region' in self.required_keys:
+            self.parser.add_argument('--region', type=str, default=None,
+                required=False, help='Region name')
+        if 'pool' in self.required_keys:
+            self.parser.add_argument('--pool', type=str, default=None,
+                required=False, help='Pool name')
+        if 'master' in self.required_keys:
+            self.parser.add_argument('--master', type=str, default=None,
+                required=False, help='Master URL')
+        if 'token' in self.required_keys:
+            self.parser.add_argument('--token', type=str, default=None,
+                required=False, help='Join token')
+
+    def update_args(self, args):
+        """Update an `argparse` namespace with a configuration.
+
+        :param config_name: Configuration name, set to `None` to bypass
+        :param args: Argparse namespace
+        """
+        # Load configuration and patch arguments
+        if getattr(args, 'config') is not None and len(getattr(args, 'config', '')) > 0:
+            if cfgfile.exists():
+                # Load configuration
+                try:
+                    with open(cfgfile, 'r') as fd:
+                        config = json.load(fd)[args.config]
+                except KeyError:
+                    raise Exception(f'S8S configuration "{args.config}" is not defined')
+                # Patch arguments
+                try:
+                    for key in self.all_keys:
+                        if getattr(args, key, None) in (None, ''):
+                            setattr(args, key, config[key])
+                except KeyError:
+                    raise Exception(f'Missing parameter "{key}" in S8S configuration "{args.config}"')
+            else:
+                raise Exception(f'S8S configurations file does not exists ({str(cfgfile)})')
+        # Check arguments
+        missing = []
+        for key in self.required_keys:
+            if getattr(args, key, None) in (None, ''):
+                missing.append(key)
+        if len(missing) > 0:
+            raise Exception(f'Missing arguments or configuration keys: {", ".join(missing)}')
+        # Done
+        return args
+
+
+class S8SCommand(Command, _S8SCommand):
+    """MelCtl `Command` wrapper.
+    """
+
+    def __init__(self, *args, **kwargs):
+        Command.__init__(self, *args, **kwargs)
+        _S8SCommand.__init__(self, *args, **kwargs)
+
+
+class S8SSimpleCommand(SimpleCommand, _S8SCommand):
+    """MelCtl `SimpleCommand` wrapper.
+    """
+
+    def __init__(self, *args, **kwargs):
+        SimpleCommand.__init__(self, *args, **kwargs)
+        _S8SCommand.__init__(self, *args, **kwargs)
+
+    def target(self, args):
+        args = self.update_args(args)
+        return super().target(args)
+
+
 class SetConfig(Command):
     """Add an S8S configuration.
     """
@@ -156,7 +239,17 @@ class RegionsList(SimpleCommand):
         super().__init__(subparser, 'list-regions', 'GET', 's8s/regions')
 
 
-class _Pools(SimpleCommand):
+class PoolsList(S8SSimpleCommand):
+    """Lists all S8S pools.
+    """
+
+    required_keys: list[str] = ['region', ]
+
+    def __init__(self, subparser):
+        super().__init__(subparser, 'list-pools', 'GET', 's8s/regions/{region}/pools',
+            headers=['name', 'nodes_count', 'nodes_list'])
+        # self.parser.add_argument('region', type=str)
+
     def render(self, args, data):
         for pool in data:
             pool['nodes_count'] = len(pool['nodes'])
@@ -164,71 +257,55 @@ class _Pools(SimpleCommand):
         return data
 
 
-class PoolsList(_Pools):
-    """Lists all S8S pools.
-    """
-
-    def __init__(self, subparser):
-        super().__init__(subparser, 'list-pools', 'GET', 's8s/regions/{region}/pools',
-            headers=['name', 'nodes_count', 'nodes_list'])
-        self.parser.add_argument('region', type=str)
-
-
-class PoolsGet(_Pools):
+class PoolsGet(S8SSimpleCommand):
     """Show information about an S8S pool.
     """
+
+    required_keys: list[str] = ['region', 'pool']
 
     def __init__(self, subparser):
         super().__init__(subparser, 'get-pool', 'GET', 's8s/regions/{region}/pools/{pool}',
             headers=['name', 'nodes_count', 'nodes_list'])
-        self.parser.add_argument('region', type=str)
-        self.parser.add_argument('pool', type=str)
+
+    def render(self, args, data):
+        for pool in data:
+            pool['nodes_count'] = len(pool['nodes'])
+            pool['nodes_list'] = [n['name'] for n in pool['nodes']]
+        return data
 
 
-class Status(_Pools):
+class Status(S8SSimpleCommand):
     """Shows a cluster pool status.
     """
+
+    required_keys: list[str] = ['region', 'pool']
 
     def __init__(self, subparser):
         super().__init__(subparser, 'status', 'GET', 's8s/regions/{region}/pools/{pool}',
             headers=['name', 'nodes_count', 'nodes_list'])
-        self.parser.add_argument('name', type=str,
-            help='Configuration name')
-    
-    def target(self, args):
-        try:
-            with open(cfgfile, 'r') as fd:
-                config = json.load(fd)[args.name]
-                args.region = config['region']
-                args.pool = config['pool']
-                return super().target(args)
-        except Exception:
-            raise
+
+    def render(self, args, data):
+        for pool in data:
+            pool['nodes_count'] = len(pool['nodes'])
+            pool['nodes_list'] = [n['name'] for n in pool['nodes']]
+        return data
 
 
-class Resources(Command):
+class Resources(S8SCommand):
     """Shows available resources.
     """
+
+    required_keys: list[str] = ['region', ]
+
     def __init__(self, subparser):
         super().__init__(subparser, 'resources',
             headers=['region', 'nodes_by_features'])
-        self.parser.add_argument('name', type=str, default=None,
-            nargs='?', help='Configuration name')
-        self.parser.add_argument('--region', type=str, default=None,
-            required=False, help='Region name')
         self.parser.add_argument('--nodeslist', action='store_true',
             default=False, help='Include nodes list')
 
-    def reprocess_args(self, args):
-        if args.name is not None:
-            with open(cfgfile, 'r') as fd:
-                config = json.load(fd)[args.name]
-                args.region = config['region']
-        return args
-
     def target(self, args):
         # Patch args from config
-        args = self.reprocess_args(args)
+        args = self.update_args(args)
         # Patch headers
         if args.nodeslist:
             self.headers.append('nodes_list')
@@ -239,7 +316,7 @@ class Resources(Command):
                 'nodeslist': args.nodeslist
             }
         )
-        req.raise_for_status()
+        self.raise_for_status(req)
         return req.json()
 
 
@@ -354,7 +431,6 @@ class Scale(Command):
             sys.exit(1)
         # Request nodes
         for node_specs in scale_specs:
-            print(node_specs)
             req = self.session.post(
                 f'{self.url}/s8s/regions/{args.region}/pools/{args.pool}',
                 json=node_specs,
@@ -362,7 +438,7 @@ class Scale(Command):
                     'dry_run': args.dry_run
                 }
             )
-            req.raise_for_status()
+            self.raise_for_status(req)
             scale_stats.append(req.json())
         # Done
         return scale_stats
